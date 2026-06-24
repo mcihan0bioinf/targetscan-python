@@ -119,6 +119,42 @@ targetscan_py/
   run_pipeline.py         # end-to-end orchestrator
 ```
 
+## hg38: re-anchoring the human side of the alignment
+
+TargetScan's existing multi-species alignment is built on hg19 for the
+human sequences. `targetscan/hg38_liftover.py` re-anchors just the human
+row of each UTR to hg38, without touching the other ~80 species (which
+stay on whatever assembly they were originally aligned to) and without
+needing a local genome FASTA or UCSC chain file -- it uses the Ensembl
+REST API for both coordinate mapping and sequence lookup.
+
+Every region gets tagged so you know exactly which ones are safe to use:
+
+| Tag | Meaning | Auto-applied? |
+|---|---|---|
+| `ok` | Clean 1:1 coordinate mapping, hg38 sequence byte-identical to hg19 | Yes -- nothing to splice, just re-anchors coordinates |
+| `shifted` | Mapped cleanly but the sequence differs (small edits/indels between assemblies) | Only if the new sequence's length matches the existing alignment row exactly; otherwise flagged for manual review |
+| `split` | Region maps to more than one block in hg38 (e.g. a segmental-duplication/rearrangement area) | No -- flagged, left untouched |
+| `failed` | No mapping at all (e.g. centromeric/assembly-gap region) | No -- flagged, left untouched |
+
+Usage:
+
+```bash
+python3 scripts/hg38_liftover.py hg19_3utr_regions.bed liftover_report.tsv \
+    --utr-file UTR_Sequences_clean.txt \
+    --utr-out UTR_Sequences_hg38.txt \
+    --applied-out liftover_applied.tsv
+```
+
+`hg19_3utr_regions.bed` is a tab-separated file of `gene_id, chrom, start,
+end, strand` (1-based inclusive coordinates) for each UTR's genomic
+location. `liftover_report.tsv` lists every region's tag; `liftover_applied.tsv`
+lists, per gene, whether its row was actually changed in the output UTR
+file. Tests in `tests/test_hg38_liftover.py` exercise all three
+mapping-based tags against real genomic regions.
+
 ## Roadmap
 
-- Adapt and validate the pipeline for hg38-based data (next step).
+- Run the liftover step against TargetScan's full hg19 3' UTR
+  coordinate file and feed the re-anchored output through the rest of
+  the pipeline end to end.
