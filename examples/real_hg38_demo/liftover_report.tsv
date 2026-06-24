@@ -1,0 +1,7 @@
+gene_id	hg19_region	tag	hg38_region	note
+CDK19	6:110931181-110935737	ok	6:110609978-110614534	Sequence identical; safe to re-anchor coordinates only
+FNDC3A	13:49781532-49783915	ok	13:49207396-49209779	Sequence identical; safe to re-anchor coordinates only
+LIN28B	6:105526659-105531207	ok	6:105078784-105083332	Sequence identical; safe to re-anchor coordinates only
+LPHN1	19:14258549-14261684	ok	19:14147737-14150872	Sequence identical; safe to re-anchor coordinates only
+NLRP1	17:5402750-5405133	ok	17:5499430-5501813	Sequence identical; safe to re-anchor coordinates only
+ZNF197	3:44688018-44689963	ok	3:44646526-44648471	Sequence identical; safe to re-anchor coordinates only

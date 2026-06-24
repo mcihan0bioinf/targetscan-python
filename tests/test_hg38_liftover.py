@@ -19,7 +19,15 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from targetscan.hg38_liftover import Region, liftover_region, splice_into_alignment  # noqa: E402
+import tempfile
+
+from targetscan.hg38_liftover import (  # noqa: E402
+    LiftoverResult,
+    Region,
+    apply_liftover_to_utr_file,
+    liftover_region,
+    splice_into_alignment,
+)
 
 
 def _network_available() -> bool:
@@ -64,3 +72,53 @@ def test_splice_into_alignment_rejects_length_mismatch():
     aligned = "AC--GT"
     new_seq = "ACGAT"  # 5 chars, but aligned has only 4 non-gap positions
     assert splice_into_alignment(aligned, new_seq) is None
+
+
+def test_apply_ok_tag_normalizes_rna_vs_dna_before_comparing(tmp_path):
+    """Regression test: found while validating against real TargetScan data --
+    Ensembl returns DNA (T), but TargetScan's UTR_Sequences.txt is RNA (U),
+    so the "does this row match the hg19 region" check must normalize
+    T<->U before comparing, or every real "ok" region would be wrongly
+    rejected as not matching."""
+    utr_file = tmp_path / "utr.txt"
+    utr_file.write_text("GENE1\t9606\tAC-GU\nGENE1\t9615\tAC-GA\n")
+
+    result = LiftoverResult(
+        gene_id="GENE1",
+        hg19_region="1:1-4",
+        tag="ok",
+        hg38_region="1:101-104",
+        hg19_sequence="ACGT",  # DNA, as Ensembl would return it
+    )
+
+    out_file = tmp_path / "utr_out.txt"
+    applied_file = tmp_path / "applied.tsv"
+    apply_liftover_to_utr_file(str(utr_file), [result], str(out_file), str(applied_file))
+
+    applied_text = applied_file.read_text()
+    assert "applied (sequence unchanged" in applied_text
+    assert "NOT applied" not in applied_text
+
+
+def test_real_demo_genes_lift_cleanly(tmp_path):
+    """All 6 genes in examples/real_hg38_demo/ are real TargetScan vert80
+    data and should lift hg19->hg38 cleanly and apply without any manual
+    review needed."""
+    demo_dir = os.path.join(ROOT, "examples", "real_hg38_demo")
+    regions_file = os.path.join(demo_dir, "hg19_3utr_regions.bed")
+    utr_file = os.path.join(demo_dir, "UTR_Sequences_6genes.txt")
+    if not (os.path.exists(regions_file) and os.path.exists(utr_file)):
+        pytest.skip("examples/real_hg38_demo/ not present")
+
+    from targetscan.hg38_liftover import apply_liftover_to_utr_file, liftover_regions, read_regions_bed
+
+    regions = read_regions_bed(regions_file)
+    results = liftover_regions(regions)
+    assert {r.tag for r in results} == {"ok"}
+
+    out_file = tmp_path / "utr_out.txt"
+    applied_file = tmp_path / "applied.tsv"
+    apply_liftover_to_utr_file(utr_file, results, str(out_file), str(applied_file))
+
+    applied_text = applied_file.read_text()
+    assert applied_text.count("applied (sequence unchanged") == len(regions)

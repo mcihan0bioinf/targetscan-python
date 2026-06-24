@@ -153,8 +153,18 @@ lists, per gene, whether its row was actually changed in the output UTR
 file. Tests in `tests/test_hg38_liftover.py` exercise all three
 mapping-based tags against real genomic regions.
 
+### Real-data example
+
+`examples/real_hg38_demo/` runs this against real TargetScan vert80 data
+(not synthetic examples) for 6 genes: their actual hg19 3' UTR
+coordinates, their actual 84-species alignment rows, liftover to hg38
+(all 6 come back tagged `ok` -- clean, sequence-verified), and the
+re-anchored result fed through the full prediction pipeline end to end.
+See `examples/real_hg38_demo/README.md` for exact commands.
+
 ## Roadmap
 
-- Run the liftover step against TargetScan's full hg19 3' UTR
-  coordinate file and feed the re-anchored output through the rest of
-  the pipeline end to end.
+- Extend the liftover step to TargetScan's full hg19 3' UTR coordinate
+  file (42k+ transcripts) instead of a handful of genes, including
+  proper handling of multi-exon 3' UTRs (a transcript's UTR can span
+  several non-adjacent genomic segments, which currently isn't modeled).

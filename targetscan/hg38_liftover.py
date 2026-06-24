@@ -235,9 +235,13 @@ def apply_liftover_to_utr_file(
     """Re-anchor the human (9606) row of each gene in a TargetScan
     UTR_Sequences.txt-style file using its liftover result.
 
-    - tag "ok": sequence is byte-identical to hg19, so the row is left
-      exactly as-is (only its real-world coordinates changed); recorded
-      as "applied (no change needed)".
+    - tag "ok": only applied if the existing alignment row's sequence
+      actually matches the hg19 sequence the liftover was computed from
+      (verified here, not assumed) -- otherwise the file's row doesn't
+      correspond to the genomic region we looked up, and re-anchoring it
+      would be wrong. If it matches, the row is left as-is (only its
+      real-world coordinates changed); recorded as "applied (no change
+      needed)".
     - tag "shifted" with a hg38 sequence available: spliced in *only* if
       it has the same ungapped length as the existing row (so it slots
       into the same alignment columns without realigning the other
@@ -259,7 +263,15 @@ def apply_liftover_to_utr_file(
             if species_id == HUMAN_SPECIES_ID and gene_id in result_by_gene:
                 r = result_by_gene[gene_id]
                 if r.tag == "ok":
-                    applied_log.append((gene_id, "applied (sequence unchanged, coordinates re-anchored)"))
+                    # TargetScan's UTR sequences are RNA (U); Ensembl returns DNA (T).
+                    existing_ungapped = seq.replace("-", "").upper().replace("T", "U")
+                    hg19_as_rna = r.hg19_sequence.upper().replace("T", "U") if r.hg19_sequence else None
+                    if hg19_as_rna and existing_ungapped == hg19_as_rna:
+                        applied_log.append((gene_id, "applied (sequence unchanged, coordinates re-anchored)"))
+                    else:
+                        applied_log.append(
+                            (gene_id, "NOT applied: alignment row doesn't match the hg19 region that was lifted")
+                        )
                 elif r.tag == "shifted" and r.hg38_sequence:
                     spliced = splice_into_alignment(seq, r.hg38_sequence)
                     if spliced is not None:
