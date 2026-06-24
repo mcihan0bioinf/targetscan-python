@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.claude/
+.claude.json
+CLAUDE.md
+.mcp.json
+*.fa
+*_lunp
+*_dp.ps
+RNAplfold_in_out/
+results/
+*.lengths.txt
+!samples/ORF_Sequences_sample.lengths.txt
