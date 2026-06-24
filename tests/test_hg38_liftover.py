@@ -24,8 +24,10 @@ import tempfile
 from targetscan.hg38_liftover import (  # noqa: E402
     LiftoverResult,
     Region,
+    Transcript,
     apply_liftover_to_utr_file,
     liftover_region,
+    liftover_transcripts,
     splice_into_alignment,
 )
 
@@ -98,6 +100,32 @@ def test_apply_ok_tag_normalizes_rna_vs_dna_before_comparing(tmp_path):
     applied_text = applied_file.read_text()
     assert "applied (sequence unchanged" in applied_text
     assert "NOT applied" not in applied_text
+
+
+def test_multiexon_transcript_orders_and_concatenates_segments():
+    """ENST00000423372.3 is a real multi-exon-UTR transcript (- strand,
+    2 genomic blocks). Confirmed by direct comparison against the real
+    UTR_Sequences.txt row for this transcript: the correctly-ordered,
+    concatenated hg19 sequence is exactly 1811 nt and starts with
+    "CUGUGAGGCCAUUUCCAGGCC..." -- this test pins that down without
+    requiring the (multi-GB) production file to be present."""
+    t = Transcript(
+        "ENST00000423372.3",
+        [
+            Region("ENST00000423372.3", "1", 134901, 135802, -1),
+            Region("ENST00000423372.3", "1", 137621, 138529, -1),
+        ],
+    )
+    # On the "-" strand, the higher-coordinate block is transcribed first.
+    ordered = t.ordered_segments()
+    assert [(r.start, r.end) for r in ordered] == [(137621, 138529), (134901, 135802)]
+
+    results = liftover_transcripts([t])
+    r = results["ENST00000423372.3"]
+    assert r.tag == "ok"
+    assert r.n_segments == 2
+    assert len(r.hg19_sequence) == 1811
+    assert r.hg19_sequence.upper().startswith("CTGTGAGGCCATTTCCAGGCC")
 
 
 def test_real_demo_genes_lift_cleanly(tmp_path):

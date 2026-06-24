@@ -153,6 +153,27 @@ lists, per gene, whether its row was actually changed in the output UTR
 file. Tests in `tests/test_hg38_liftover.py` exercise all three
 mapping-based tags against real genomic regions.
 
+About a quarter of human transcripts have a 3' UTR split across multiple,
+non-adjacent genomic blocks (multi-exon UTRs). Each block is lifted
+independently; a transcript's overall tag is the worst of its blocks'
+tags, and when all blocks are `ok`, its hg38 sequence is the per-block
+sequences concatenated in 5'->3' transcript order (descending genomic
+order for `-` strand transcripts) -- verified against real production
+data in `tests/test_hg38_liftover.py`.
+
+### Running against TargetScan's full coordinate file
+
+```bash
+python3 scripts/hg38_liftover.py --gff TSHuman_7_hg19_3UTRs.gff liftover_report.tsv --workers 4
+```
+
+This processes every transcript in TargetScan's hg19 3' UTR GFF
+(~28,000 transcripts as of vert80), with coordinate mapping done
+concurrently and sequence verification batched, against Ensembl's REST
+API. It writes results incrementally and is resumable -- if interrupted,
+re-running the same command skips transcripts already in the output
+file. A full run takes roughly 1-1.5 hours.
+
 ### Real-data example
 
 `examples/real_hg38_demo/` runs this against real TargetScan vert80 data
