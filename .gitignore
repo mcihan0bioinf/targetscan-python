@@ -12,3 +12,4 @@ examples/real_hg38_demo/out/
 examples/real_hg38_demo/*.hg38.txt
 examples/real_hg38_demo/liftover_applied.tsv
 .liftover_work/
+data_hg19_bed/

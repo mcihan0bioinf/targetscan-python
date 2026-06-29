@@ -1,14 +1,27 @@
 # targetscan-python
 
 A Python rewrite of the original TargetScan miRNA target-prediction
-toolkit -- same algorithm, same output, no Perl.
+toolkit, plus a toolkit for re-anchoring its hg19-based data to hg38.
 
 [TargetScan](https://www.targetscan.org) predicts microRNA targets by
 scanning 3' UTR sequences for miRNA seed matches and scoring how
-conserved and effective each site is. It was originally released as a
-set of Perl scripts; this project reimplements all of it natively in
-Python, with no Perl interpreter and no BioPerl dependency anywhere in
-the chain.
+conserved and effective each site is. This project has two parts:
+
+1. **Perl to Python**: a faithful, byte-for-byte-verified rewrite of
+   TargetScan's five-stage Perl pipeline, with no Perl/BioPerl dependency.
+2. **hg19 to hg38**: a toolkit that re-anchors TargetScan's hg19-based
+   data (both the underlying alignments and its published per-site BED
+   coordinate files) to hg38, with explicit safety tagging so nothing is
+   silently guessed.
+
+---
+
+# Chapter 1: Perl to Python
+
+A faithful rewrite of TargetScan's Perl pipeline -- same algorithm, same
+output, no Perl. Originally released as a set of Perl scripts; this
+reimplements all of it natively in Python, with no Perl interpreter and
+no BioPerl dependency anywhere in the chain.
 
 **Validated for exact compatibility**: every stage's output has been
 checked byte-for-byte against the original Perl scripts on sample data
@@ -97,47 +110,47 @@ pip install -r requirements.txt
 
 ```bash
 pip install pytest
-pytest tests/test_pipeline.py -v
+pytest tests/ -v
 ```
 
 These tests run every stage on the bundled sample data and check the
-output. Stage 5's test uses cached RNAplfold output to get exact
+output. The context-scores test uses cached RNAplfold output to get exact
 byte-for-byte equality; running it with a freshly-invoked RNAplfold may
 produce tiny numeric differences in the SA contribution column if your
 installed ViennaRNA version differs from the one used to generate the
 cached results -- that's expected, not a bug.
 
-## Repo layout
+---
 
-```
-targetscan_py/
-  targetscan/             # the library (one module per pipeline stage)
-  scripts/                # CLI wrappers, one per pipeline stage
-  data/                   # model parameters + PCT trees (sample AIRs included)
-  samples/                # small sample input files
-  tests/                  # regression tests
-  run_pipeline.py         # end-to-end orchestrator
-```
+# Chapter 2: hg19 to hg38
 
-## hg38: re-anchoring the human side of the alignment
+TargetScan's data is hg19-based. This chapter re-anchors it to hg38 in
+two layers: first the underlying multi-species **alignment** (so the
+prediction pipeline above can run on hg38-verified sequence), then
+TargetScan's own published **per-site genomic coordinate files** (so
+existing prediction results can be annotated with real hg38 locations
+without re-running the pipeline at all).
 
-TargetScan's existing multi-species alignment is built on hg19 for the
-human sequences. `targetscan/hg38_liftover.py` re-anchors just the human
-row of each UTR to hg38, without touching the other ~80 species (which
-stay on whatever assembly they were originally aligned to) and without
-needing a local genome FASTA or UCSC chain file -- it uses the Ensembl
-REST API for both coordinate mapping and sequence lookup.
+Every tool here follows the same rule: only act where the mapping is
+*verified safe* (identical sequence, unambiguous coordinates). Anything
+else is tagged and left alone rather than guessed.
 
-Every region gets tagged so you know exactly which ones are safe to use:
+## Tags
 
 | Tag | Meaning | Auto-applied? |
 |---|---|---|
-| `ok` | Clean 1:1 coordinate mapping, hg38 sequence byte-identical to hg19 | Yes -- nothing to splice, just re-anchors coordinates |
-| `shifted` | Mapped cleanly but the sequence differs (small edits/indels between assemblies) | Only if the new sequence's length matches the existing alignment row exactly; otherwise flagged for manual review |
-| `split` | Region maps to more than one block in hg38 (e.g. a segmental-duplication/rearrangement area) | No -- flagged, left untouched |
-| `failed` | No mapping at all (e.g. centromeric/assembly-gap region) | No -- flagged, left untouched |
+| `ok` | Clean 1:1 coordinate mapping, hg38 sequence byte-identical to hg19 | Yes |
+| `shifted` | Mapped cleanly but the sequence differs (small edits/indels between assemblies) | Only if length still matches exactly; otherwise flagged |
+| `split` | Region maps to more than one block in hg38 (e.g. a segmental-duplication/rearrangement area) | No -- flagged |
+| `failed` | No mapping at all (e.g. centromeric/assembly-gap region) | No -- flagged |
 
-Usage:
+## 2.1 Re-anchoring the alignment (`hg38_liftover.py`)
+
+Re-anchors the **human row** of TargetScan's existing multi-species UTR
+alignment to hg38, leaving the other ~80 species exactly as they were
+(they stay on whatever assembly they were originally aligned to). Uses
+the Ensembl REST API for both coordinate mapping and sequence lookup --
+no local genome FASTA or UCSC chain file needed.
 
 ```bash
 python3 scripts/hg38_liftover.py hg19_3utr_regions.bed liftover_report.tsv \
@@ -146,20 +159,13 @@ python3 scripts/hg38_liftover.py hg19_3utr_regions.bed liftover_report.tsv \
     --applied-out liftover_applied.tsv
 ```
 
-`hg19_3utr_regions.bed` is a tab-separated file of `gene_id, chrom, start,
-end, strand` (1-based inclusive coordinates) for each UTR's genomic
-location. `liftover_report.tsv` lists every region's tag; `liftover_applied.tsv`
-lists, per gene, whether its row was actually changed in the output UTR
-file. Tests in `tests/test_hg38_liftover.py` exercise all three
-mapping-based tags against real genomic regions.
-
-About a quarter of human transcripts have a 3' UTR split across multiple,
-non-adjacent genomic blocks (multi-exon UTRs). Each block is lifted
-independently; a transcript's overall tag is the worst of its blocks'
-tags, and when all blocks are `ok`, its hg38 sequence is the per-block
-sequences concatenated in 5'->3' transcript order (descending genomic
-order for `-` strand transcripts) -- verified against real production
-data in `tests/test_hg38_liftover.py`.
+`hg19_3utr_regions.bed` is `gene_id, chrom, start, end, strand` (1-based
+inclusive). About a quarter of human transcripts have a 3' UTR split
+across multiple non-adjacent genomic blocks (multi-exon UTRs); each block
+is lifted independently and a transcript's tag is the worst of its
+blocks' tags, with hg38 sequence concatenated in correct 5'->3'
+transcript order when all blocks are `ok` -- verified against real
+production data in `tests/test_hg38_liftover.py`.
 
 ### Running against TargetScan's full coordinate file
 
@@ -167,48 +173,120 @@ data in `tests/test_hg38_liftover.py`.
 python3 scripts/hg38_liftover.py --gff TSHuman_7_hg19_3UTRs.gff liftover_report.tsv --workers 4
 ```
 
-This processes every transcript in TargetScan's hg19 3' UTR GFF
-(~28,000 transcripts as of vert80), with coordinate mapping done
-concurrently and sequence verification batched, against Ensembl's REST
-API. It writes results incrementally and is resumable -- if interrupted,
-re-running the same command skips transcripts already in the output
-file. A full run takes roughly 1-1.5 hours.
+Processes every transcript in TargetScan's hg19 3' UTR GFF (28,347
+transcripts for vert80). Coordinate mapping runs concurrently, sequence
+verification is batched, and results are written incrementally so the
+run is resumable -- if interrupted, re-running the same command skips
+transcripts already in the output file. A full run takes roughly
+1-1.5 hours.
 
-### Annotating predicted sites with real hg38 coordinates
+**Actual result on the real vert80 GFF (28,347 transcripts):**
 
-`site_prediction.py` (and the rest of the pipeline) reports each site's
-position as a UTR-relative offset, not a genome coordinate -- it only
-ever looks at sequence. `targetscan/hg38_annotate_sites.py` closes that
-gap: given a predicted-targets file and a liftover report, it adds an
-`hg38_location` column with the real `chrom:start-end` genomic position
-of each human-row site (using the per-transcript hg38 blocks the
-liftover already worked out). Sites that span a splice junction in a
-multi-exon UTR get multiple semicolon-separated blocks, same as the
-liftover report itself. Only works for transcripts the liftover tagged
-`ok`; everything else gets `NA`.
+| Tag | Count | % |
+|---|---|---|
+| `ok` | 27,455 | 96.9% |
+| `shifted` | 475 | 1.7% |
+| `split` | 148 | 0.5% |
+| `failed` | 269 | 0.9% |
+
+### Annotating predicted sites with real hg38 coordinates (`hg38_annotate_sites.py`)
+
+`site_prediction.py` (Chapter 1) reports each site's position as a
+UTR-relative offset, not a genome coordinate. This converts that offset
+into a real `chrom:start-end` hg38 location, using the per-transcript
+hg38 blocks the liftover above worked out. Sites spanning a splice
+junction in a multi-exon UTR get multiple semicolon-separated blocks.
+Only works for transcripts tagged `ok`; everything else gets `NA`.
 
 ```bash
 python3 scripts/hg38_annotate_sites.py predicted_targets.txt liftover_report.tsv \
     TSHuman_7_hg19_3UTRs.gff predicted_targets.hg38_annotated.txt
 ```
 
-Verified against real predicted sites in `examples/real_hg38_demo/`
-(manually checked: e.g. a NLRP1 site at UTR_start=2226 on this `-` strand
-gene's hg38 region 17:5499430-5501813 correctly lands at
-17:5499583-5499588) -- see `tests/test_hg38_annotate_sites.py`.
+Verified by hand against real predicted sites on both strands (e.g. a
+NLRP1 site at UTR_start=2226 on this `-` strand gene's hg38 region
+17:5499430-5501813 correctly lands at 17:5499583-5499588) -- see
+`tests/test_hg38_annotate_sites.py`.
 
 ### Real-data example
 
-`examples/real_hg38_demo/` runs this against real TargetScan vert80 data
-(not synthetic examples) for 6 genes: their actual hg19 3' UTR
-coordinates, their actual 84-species alignment rows, liftover to hg38
-(all 6 come back tagged `ok` -- clean, sequence-verified), and the
-re-anchored result fed through the full prediction pipeline end to end.
-See `examples/real_hg38_demo/README.md` for exact commands.
+`examples/real_hg38_demo/` runs the full chain against real TargetScan
+vert80 data (not synthetic examples) for 6 genes: their actual hg19 3'
+UTR coordinates, their actual 84-species alignment rows, liftover to
+hg38, and the re-anchored result fed through the Chapter 1 pipeline end
+to end. See `examples/real_hg38_demo/README.md` for exact commands.
+
+## 2.2 Lifting TargetScan's own per-site BED files (`hg38_liftover_sites.py`)
+
+TargetScan also publishes the genomic locations of every predicted site
+directly, as hg19 BED files (`score` = context++ score percentile) --
+e.g. `All_Target_Locations.hg19.bed.zip`, split into 8 files by miRNA
+family conservation and site conservation. These give exact per-site
+genomic coordinates already, so rather than re-deriving them from
+UTR-relative offsets (2.1's approach), this lifts them directly.
+
+The key trick: BED coordinates are plain genomic coordinates (not
+transcript-relative), and 2.1 already verified, per transcript, exactly
+how its hg19 UTR block(s) map to hg38. Within a block tagged `ok` that
+mapping is a constant additive offset (no strand bookkeeping needed --
+BED coordinates are always plus-strand on both assemblies). So every site
+under an `ok`-tagged gene gets its hg38 coordinate by **pure arithmetic**,
+reusing 2.1's already Ensembl-verified mapping -- no new API calls. Sites
+under genes that weren't tagged `ok` get that same tag and no coordinate.
+
+```bash
+python3 scripts/hg38_liftover_sites.py Gene_info.txt liftover_report.tsv in.bed out.bed
+```
+
+A site can legitimately start in one GFF-recorded block and end in the
+next (TargetScan's GFF splits annotations by feature type -- e.g. "UTR"
+vs "ORF" -- even where they're genomically contiguous), so blocks aren't
+required to fully contain a site; the start and end positions are
+resolved independently and only fail if they disagree (a real
+`site_spans_inconsistent_blocks`, meaning the two ends sit in genuinely
+differently-shifted regions) -- verified against a real multi-block case
+(MCM10) in `tests/test_hg38_liftover_sites.py`.
+
+**Actual result, all 8 real vert80 files (12,344,655 total predicted sites):**
+
+| File | Total sites | `ok` | % ok |
+|---|---|---|---|
+| broadConsFam.consSite | 81,886 | 75,735 | 92.5% |
+| broadConsFam.nonConsSite | 531,508 | 453,364 | 85.3% |
+| consFam.consSite | 44,813 | 41,063 | 91.6% |
+| consFam.nonConsSite | 624,224 | 534,836 | 85.7% |
+| nonConsFam.consSite | 1,060 | 958 | 90.4% |
+| nonConsFam.nonConsSite | 1,282,120 | 1,102,298 | 86.0% |
+| otherFam.consSite | 397 | 372 | 93.7% |
+| otherFam.nonConsSite | 9,778,647 | 8,391,695 | 85.8% |
+| **Total** | **12,344,655** | **10,600,321** | **85.9%** |
+
+The ~14% not tagged `ok` break down as: site outside any block TargetScan's
+GFF actually covers (10.3%, mostly a small number of sites whose
+underlying gene model differs between this BED file's 2021 vintage and
+the 2016 GFF used for the transcript-level liftover -- a genuine data
+versioning mismatch, not a bug, hence flagged rather than guessed),
+`shifted` (2.1%), `split` (1.0%), `failed` (0.7%), and a handful of
+`no_gene_mapping`/`no_liftover_data` (<0.02%).
+
+---
+
+## Repo layout
+
+```
+targetscan_py/
+  targetscan/             # the library: pipeline stages (Ch.1) + liftover tools (Ch.2)
+  scripts/                # CLI wrappers, one per tool
+  data/                   # model parameters + PCT trees (Ch.1; sample AIRs included)
+  samples/                # small sample input files (Ch.1)
+  examples/real_hg38_demo/  # real 6-gene example, hg19->hg38->pipeline end to end (Ch.2)
+  tests/                  # regression tests for both chapters
+  run_pipeline.py         # Ch.1 end-to-end orchestrator
+```
 
 ## Roadmap
 
-- Extend the liftover step to TargetScan's full hg19 3' UTR coordinate
-  file (42k+ transcripts) instead of a handful of genes, including
-  proper handling of multi-exon 3' UTRs (a transcript's UTR can span
-  several non-adjacent genomic segments, which currently isn't modeled).
+- The `site_outside_lifted_blocks` residual in 2.2 traces to gene-model
+  version drift between TargetScan's 2016 GFF and 2021 BED exports;
+  refreshing the transcript-level liftover (2.1) against a matching-vintage
+  GFF would close most of that gap.
