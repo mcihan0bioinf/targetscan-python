@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.fa
+*_lunp
+*_dp.ps
+RNAplfold_in_out/
+results/
+*.lengths.txt
+!samples/ORF_Sequences_sample.lengths.txt
+examples/real_hg38_demo/out/
+examples/real_hg38_demo/*.hg38.txt
+examples/real_hg38_demo/liftover_applied.tsv
