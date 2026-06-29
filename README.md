@@ -174,6 +174,29 @@ API. It writes results incrementally and is resumable -- if interrupted,
 re-running the same command skips transcripts already in the output
 file. A full run takes roughly 1-1.5 hours.
 
+### Annotating predicted sites with real hg38 coordinates
+
+`site_prediction.py` (and the rest of the pipeline) reports each site's
+position as a UTR-relative offset, not a genome coordinate -- it only
+ever looks at sequence. `targetscan/hg38_annotate_sites.py` closes that
+gap: given a predicted-targets file and a liftover report, it adds an
+`hg38_location` column with the real `chrom:start-end` genomic position
+of each human-row site (using the per-transcript hg38 blocks the
+liftover already worked out). Sites that span a splice junction in a
+multi-exon UTR get multiple semicolon-separated blocks, same as the
+liftover report itself. Only works for transcripts the liftover tagged
+`ok`; everything else gets `NA`.
+
+```bash
+python3 scripts/hg38_annotate_sites.py predicted_targets.txt liftover_report.tsv \
+    TSHuman_7_hg19_3UTRs.gff predicted_targets.hg38_annotated.txt
+```
+
+Verified against real predicted sites in `examples/real_hg38_demo/`
+(manually checked: e.g. a NLRP1 site at UTR_start=2226 on this `-` strand
+gene's hg38 region 17:5499430-5501813 correctly lands at
+17:5499583-5499588) -- see `tests/test_hg38_annotate_sites.py`.
+
 ### Real-data example
 
 `examples/real_hg38_demo/` runs this against real TargetScan vert80 data
