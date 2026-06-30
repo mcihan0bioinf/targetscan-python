@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.fa
+!tests/golden/RNAplfold_in_out/*.fa
 *_lunp
+!tests/golden/RNAplfold_in_out/*_lunp
 *_dp.ps
 RNAplfold_in_out/
 results/
