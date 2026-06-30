@@ -7,6 +7,7 @@ __pycache__/
 !tests/golden/RNAplfold_in_out/*_lunp
 *_dp.ps
 RNAplfold_in_out/
+!tests/golden/RNAplfold_in_out/
 results/
 *.lengths.txt
 !samples/ORF_Sequences_sample.lengths.txt
