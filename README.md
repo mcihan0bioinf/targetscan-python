@@ -51,10 +51,10 @@ time with the scripts in `scripts/`.
 
 ```bash
 python3 run_pipeline.py \
-    --mirna-family miR_Family_info.txt \
-    --utr UTR_Sequences_clean.txt \
-    --orf ORF_Sequences_clean.txt \
-    --mirna-context miR_for_context_scores.txt \
+    --mirna-family samples/miR_Family_info_sample.txt \
+    --utr samples/UTR_Sequences_sample.txt \
+    --orf samples/ORF_Sequences_sample.txt \
+    --mirna-context samples/miR_for_context_scores.sample.txt \
     --out-dir results/
 ```
 
