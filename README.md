@@ -15,8 +15,7 @@ scripts. This repo has two parts: a full Python port of that pipeline
 # Chapter 1: Perl to Python
 
 Same algorithm, same output, no Perl. Every stage is checked byte-for-byte
-against the original Perl output (see `tests/test_pipeline.py`). A few quirks
-in the original are kept intentionally — noted inline where they appear.
+against the original Perl output (see `tests/test_pipeline.py`).
 
 ## Pipeline stages
 
@@ -34,7 +33,7 @@ BioPerl's tree handling with Biopython.
 Run all five stages at once with `run_pipeline.py`, or run them one at a
 time with the scripts in `scripts/`.
 
-## What actually changed going Perl -> Python
+## What changed going Perl to Python
 
 - No Perl, no BioPerl. The only real dependency is `biopython`, used
   just for reading phylogenetic trees.
@@ -43,7 +42,7 @@ time with the scripts in `scripts/`.
   Perl calls by hand.
 - A test suite that pins every stage's output against the original
   tool's results, so future changes can't quietly drift.
-- The algorithm itself didn't change — same seed-matching rules, same
+- The algorithm itself didn't change: same seed-matching rules, same
   branch-length/PCT math, same context++ coefficients.
 
 ## Running it
@@ -103,25 +102,23 @@ Runs every stage on the bundled samples and checks the output. The
 context-scores test uses cached RNAplfold output to get exact equality;
 running with a freshly-invoked RNAplfold can shift the "SA contribution"
 column slightly if your ViennaRNA version differs from whatever generated
-the cached files — that's just a version difference in the external
-tool, not a bug here.
+the cached files. That's just a version difference in the external tool,
+not a bug here.
 
 ---
 
 # Chapter 2: hg19 to hg38
 
-TargetScan's data is all hg19. This re-anchors it to hg38 — first the
-underlying alignment, then TargetScan's own published per-site BED files
-— and is careful about it: every region gets tagged `ok`, `shifted`,
-`split`, or `failed` depending on how confidently it mapped over, and
-only `ok` regions get touched. Nothing here guesses.
+TargetScan's data is all hg19. This re-anchors it to hg38, first the
+underlying alignment, then TargetScan's own published per-site BED files.
+Every region gets tagged `ok`, `shifted`, `split`, or `failed` depending
+on how confidently it mapped over. Only `ok` regions get touched.
 
-## `hg38_liftover.py` — re-anchoring the alignment
+## `hg38_liftover.py`
 
 Re-anchors the human row of TargetScan's UTR alignment to hg38, leaving
-the other ~80 species untouched. Uses the Ensembl REST API for both
-coordinate mapping and sequence lookup, so no genome FASTA or chain file
-needed.
+the other ~80 species untouched. Uses the Ensembl REST API for coordinate
+mapping and sequence lookup, so no genome FASTA or chain file needed.
 
 ```bash
 python3 scripts/hg38_liftover.py hg19_3utr_regions.bed liftover_report.tsv \
@@ -132,38 +129,36 @@ python3 scripts/hg38_liftover.py --gff TSHuman_7_hg19_3UTRs.gff liftover_report.
 ```
 
 Ran it against the real vert80 GFF: of 28,347 transcripts, 27,455 (97%)
-came back clean. Multi-exon UTRs (about a quarter of transcripts have
-their 3' UTR split across several genomic blocks) are handled by lifting
-each block and concatenating in the right order.
+came back clean. Multi-exon UTRs are handled by lifting each block and
+concatenating in the right order.
 
-## `hg38_annotate_sites.py` — adding real coordinates to predicted sites
+## `hg38_annotate_sites.py`
 
-The pipeline in Chapter 1 only ever reports a site's position as an
-offset within its UTR, not a genome coordinate. This converts that offset
-into a real `chrom:start-end` using the liftover above.
+The pipeline in Chapter 1 only reports a site's position as an offset
+within its UTR. This converts that offset into a real `chrom:start-end`
+using the liftover above.
 
 ```bash
 python3 scripts/hg38_annotate_sites.py predicted_targets.txt liftover_report.tsv \
     TSHuman_7_hg19_3UTRs.gff predicted_targets.hg38_annotated.txt
 ```
 
-## `hg38_liftover_sites.py` — lifting TargetScan's own site BED files
+## `hg38_liftover_sites.py`
 
 TargetScan also publishes genomic coordinates for every predicted site
 directly (e.g. `All_Target_Locations.hg19.bed.zip`, 8 files split by
-conservation). Since those coordinates are already genomic, and the
-liftover above already worked out exactly how each gene's region shifts
-between assemblies, lifting them is just arithmetic — no new API calls.
+conservation). Since those coordinates are already genomic and the
+liftover above already worked out how each gene's region shifts between
+assemblies, lifting them is just arithmetic with no new API calls.
 
 ```bash
 python3 scripts/hg38_liftover_sites.py Gene_info.txt liftover_report.tsv in.bed out.bed
 ```
 
-Ran this against all 8 real files — 12.3 million sites total — and it
-finished in under a minute. About 86% came back `ok`; most of the rest
-trace to a handful of genes whose underlying model shifted slightly
-between TargetScan's 2016 GFF and this 2021 BED export, which gets
-flagged rather than papered over.
+Ran this against all 8 real files: 12.3 million sites total, finished in
+under a minute. About 86% came back `ok`. Most of the rest trace to genes
+whose model shifted slightly between TargetScan's 2016 GFF and the 2021
+BED export, which gets flagged rather than papered over.
 
 `examples/real_hg38_demo/` ties all of this together on 6 real genes end
 to end, if you want something small to look at first.
