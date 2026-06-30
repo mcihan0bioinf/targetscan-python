@@ -14,12 +14,9 @@ scripts. This repo has two parts: a full Python port of that pipeline
 
 # Chapter 1: Perl to Python
 
-Same algorithm, same output, no Perl. Every stage's output has been
-checked byte-for-byte against the original Perl on sample data (see
-`tests/test_pipeline.py`) — this is meant as a drop-in replacement, not a
-rewrite-and-hope-it's-equivalent job. A few odd edge-case behaviors in the
-original Perl are kept as-is on purpose (noted inline in the code),
-because matching the original mattered more than "fixing" it.
+Same algorithm, same output, no Perl. Every stage is checked byte-for-byte
+against the original Perl output (see `tests/test_pipeline.py`). A few quirks
+in the original are kept intentionally — noted inline where they appear.
 
 ## Pipeline stages
 
